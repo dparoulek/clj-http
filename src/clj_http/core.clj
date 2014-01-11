@@ -209,12 +209,14 @@
            cookie-store retry-handler response-interceptor digest-auth
            connection-manager client-params raw-headers]
     :as req}]
-  (let [^ClientConnectionManager conn-mgr
+  (let [^HttpClientConnectionManager conn-mgr
         (or connection-manager
             conn/*connection-manager*
             (conn/make-regular-conn-manager req))
-        ^DefaultHttpClient http-client (set-routing
-                                        (DefaultHttpClient. conn-mgr))
+        ^CloseableHttpClient http-client 
+        (.. (HttpClientBuilder/create) (setConnectionManager conn-mgr) (build))
+        ;; (set-routing
+        ;;  )
         scheme (name scheme)]
     (when-let [cookie-store (or cookie-store *cookie-store*)]
       (.setCookieStore http-client cookie-store))
@@ -224,6 +226,13 @@
        (proxy [HttpRequestRetryHandler] []
          (retryRequest [e cnt context]
            (retry-handler e cnt context)))))
+    ;; (add-client-params!
+    ;;  http-client
+    ;;  ;; merge in map of specified timeouts, to
+    ;;  ;; support backward compatiblity.
+    ;;  (merge {CoreConnectionPNames/SO_TIMEOUT socket-timeout
+    ;;          CoreConnectionPNames/CONNECTION_TIMEOUT conn-timeout}
+    ;;         client-params))
 
     (when-let [[user pass] digest-auth]
       (.setCredentials
