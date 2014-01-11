@@ -5,15 +5,15 @@
            (java.security KeyStore)
            (java.security.cert X509Certificate)
            (javax.net.ssl SSLSession SSLSocket)
-           (org.apache.http.conn ClientConnectionManager)
+           (org.apache.http.conn HttpClientConnectionManager)
            (org.apache.http.conn.params ConnPerRouteBean)
            (org.apache.http.conn.ssl AllowAllHostnameVerifier SSLSocketFactory
                                      TrustStrategy X509HostnameVerifier
                                      SSLContexts)
            (org.apache.http.conn.scheme PlainSocketFactory
                                         SchemeRegistry Scheme)
-           (org.apache.http.impl.conn BasicClientConnectionManager
-                                      PoolingClientConnectionManager
+           (org.apache.http.impl.conn BasicHttpClientConnectionManager
+                                      PoolingHttpClientConnectionManager
                                       ProxySelectorRoutePlanner
                                       SchemeRegistryFactory
                                       SingleClientConnManager)))
@@ -78,7 +78,7 @@
                (Scheme. "https" 443 (SSLGenericSocketFactory socket-factory)))
               (.register
                (Scheme. "http" 80 (PlainGenericSocketFactory socket-factory))))]
-    (PoolingClientConnectionManager. reg)))
+    (PoolingHttpClientConnectionManager. reg)))
 
 (def insecure-scheme-registry
   (doto (SchemeRegistry.)
@@ -110,22 +110,22 @@
     (doto (SchemeRegistryFactory/createDefault)
       (.register (Scheme. "https" 443 factory)))))
 
-(defn ^BasicClientConnectionManager make-regular-conn-manager
+(defn ^HttpClientConnectionManager make-regular-conn-manager
   [{:keys [insecure? keystore trust-store] :as req}]
   (cond
    (or keystore trust-store)
-   (BasicClientConnectionManager. (get-keystore-scheme-registry req))
+   (BasicHttpClientConnectionManager. (get-keystore-scheme-registry req))
 
-   insecure? (BasicClientConnectionManager. insecure-scheme-registry)
+   insecure? (BasicHttpClientConnectionManager. insecure-scheme-registry)
 
-   :else (BasicClientConnectionManager.)))
+   :else (BasicHttpClientConnectionManager.)))
 
 ;; need the fully qualified class name because this fn is later used in a
 ;; macro from a different ns
-(defn ^org.apache.http.impl.conn.PoolingClientConnectionManager
+(defn ^org.apache.http.impl.conn.PoolingHttpClientConnectionManager
   make-reusable-conn-manager*
   "Given an timeout and optional insecure? flag, create a
-  PoolingClientConnectionManager with <timeout> seconds set as the
+  PoolingHttpClientConnectionManager with <timeout> seconds set as the
   timeout value."
   [{:keys [timeout insecure? keystore trust-store] :as config}]
   (let [registry (cond
@@ -135,14 +135,14 @@
                   (get-keystore-scheme-registry config)
 
                   :else regular-scheme-registry)]
-    (PoolingClientConnectionManager.
+    (PoolingHttpClientConnectionManager.
      registry timeout java.util.concurrent.TimeUnit/SECONDS)))
 
 (def dmcpr ConnPerRouteBean/DEFAULT_MAX_CONNECTIONS_PER_ROUTE)
 
-(defn reusable? [^ClientConnectionManager conn-mgr]
+(defn reusable? [^HttpClientConnectionManager conn-mgr]
   (not (or (instance? SingleClientConnManager conn-mgr)
-           (instance? BasicClientConnectionManager conn-mgr))))
+           (instance? BasicHttpClientConnectionManager conn-mgr))))
 
 (defn make-reusable-conn-manager
   "Creates a default pooling connection manager with the specified options.
@@ -181,7 +181,7 @@
 
 (defn shutdown-manager
   "Define function to shutdown manager"
-  [^ClientConnectionManager manager]
+  [^HttpClientConnectionManager manager]
   (and manager (.shutdown manager)))
 
 (def ^{:dynamic true

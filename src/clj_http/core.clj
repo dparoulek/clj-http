@@ -18,15 +18,16 @@
                                            HttpPatch HttpPost HttpPut
                                            HttpUriRequest)
            (org.apache.http.client.params CookiePolicy ClientPNames)
-           (org.apache.http.conn ClientConnectionManager)
+           (org.apache.http.conn HttpClientConnectionManager)
            (org.apache.http.conn.routing HttpRoute)
            (org.apache.http.conn.params ConnRoutePNames)
            (org.apache.http.cookie CookieSpecFactory)
            (org.apache.http.cookie.params CookieSpecPNames)
            (org.apache.http.entity ByteArrayEntity StringEntity)
 
-           (org.apache.http.impl.client DefaultHttpClient)
-           (org.apache.http.impl.conn ProxySelectorRoutePlanner)
+           (org.apache.http.impl.client CloseableHttpClient)
+           (org.apache.http.impl.client HttpClientBuilder)
+           (org.apache.http.impl.conn SystemDefaultRoutePlanner)
            (org.apache.http.impl.cookie BrowserCompatSpec)
            (org.apache.http.util EntityUtils)))
 
@@ -70,15 +71,15 @@
 (def ^{:dynamic true} *cookie-store* nil)
 
 (defn- set-routing
-  "Use ProxySelectorRoutePlanner to choose proxy sensible based on
+  "Use SystemDefaultRoutePlanner to choose proxy sensible based on
   http.nonProxyHosts"
-  [^DefaultHttpClient client]
+  [^CloseableHttpClient client]
   (.setRoutePlanner client
-                    (ProxySelectorRoutePlanner.
+                    (SystemDefaultRoutePlanner.
                      (.. client getConnectionManager getSchemeRegistry) nil))
   client)
 
-(defn maybe-force-proxy [^DefaultHttpClient client
+(defn maybe-force-proxy [^CloseableHttpClient client
                          ^HttpEntityEnclosingRequestBase request
                          proxy-host proxy-port proxy-ignore-hosts]
   (let [uri (.getURI request)]
@@ -111,7 +112,7 @@
 
 (defn add-client-params!
   "Add various client params to the http-client object, if needed."
-  [^DefaultHttpClient http-client kvs]
+  [^CloseableHttpClient http-client kvs]
   (let [cookie-policy (:cookie-policy kvs)
         cookie-policy-name (str (type cookie-policy))
         kvs (dissoc kvs :cookie-policy)]
@@ -138,7 +139,7 @@
 (defn- coerce-body-entity
   "Coerce the http-entity from an HttpResponse to either a byte-array, or a
   stream that closes itself and the connection manager when closed."
-  [{:keys [as]} ^HttpEntity http-entity ^ClientConnectionManager conn-mgr]
+  [{:keys [as]} ^HttpEntity http-entity ^HttpClientConnectionManager conn-mgr]
   (when http-entity
     (proxy [FilterInputStream]
         [^InputStream (.getContent http-entity)]
@@ -223,13 +224,6 @@
        (proxy [HttpRequestRetryHandler] []
          (retryRequest [e cnt context]
            (retry-handler e cnt context)))))
-    (add-client-params!
-     http-client
-     ;; merge in map of specified timeouts, to
-     ;; support backward compatiblity.
-     (merge {CoreConnectionPNames/SO_TIMEOUT socket-timeout
-             CoreConnectionPNames/CONNECTION_TIMEOUT conn-timeout}
-            client-params))
 
     (when-let [[user pass] digest-auth]
       (.setCredentials
@@ -307,5 +301,5 @@
             resp))
         (catch Throwable e
           (when-not (conn/reusable? conn-mgr)
-            (.shutdown ^ClientConnectionManager conn-mgr))
+            (.shutdown ^HttpClientConnectionManager conn-mgr))
           (throw e))))))
